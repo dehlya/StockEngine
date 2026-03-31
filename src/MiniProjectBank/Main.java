@@ -1,5 +1,6 @@
 package MiniProjectBank;
 
+import MiniProjectBank.ui.ReplayDashboard;
 import MiniProjectBank.ui.TradingDashboard;
 
 import javax.swing.*;
@@ -30,22 +31,24 @@ import java.util.concurrent.TimeUnit;
  *       +-----> MarketBroadcaster thread (logs trades, updates price feed, pushes to GUI)
  *                    |
  *                    v
- *              TradingDashboard (Swing GUI with charts and live feed)
+ *              TradingDashboard (Swing GUI with charts and live feed) — optional
  *
- * Two modes available:
- *  - Simulation: 8 bots, ~2s delay — slow enough to follow individual orders
- *  - Benchmark: 200 bots, ~5ms delay — stress test, thousands of orders per second
+ * Three modes:
+ *  - Simulation: 8 bots, ~2s delay — slow enough to follow individual orders (with GUI)
+ *  - Benchmark: 200 bots, ~5ms delay — stress test, thousands of orders per second (with GUI)
+ *  - Console: same as benchmark but no GUI — pure terminal output
  */
 public class Main {
     public static void main(String[] args) throws InterruptedException {
 
         // mode selection dialog — first thing the user sees
-        String[] options = {"Simulation (slow — for demo)", "Benchmark (fast — full speed)"};
+        String[] options = {"Simulation (slow — for demo)", "Benchmark (fast — full speed)", "Console (no GUI)"};
         int choice = JOptionPane.showOptionDialog(
                 null,
                 "Choose a mode:\n\n"
-                        + "• Simulation: slowed down so you can watch trades happen\n"
-                        + "• Benchmark: full speed, processes everything as fast as possible",
+                        + "• Simulation: slowed down so you can watch trades happen (with dashboard)\n"
+                        + "• Benchmark: full speed with dashboard\n"
+                        + "• Console: full speed, terminal output only — no GUI",
                 "StockEngine — Mode Selection",
                 JOptionPane.DEFAULT_OPTION,
                 JOptionPane.QUESTION_MESSAGE,
@@ -54,13 +57,16 @@ public class Main {
                 options[0]
         );
 
+        boolean isConsole   = (choice == 2);
         boolean isBenchmark = (choice == 1);
-        int traderDelay = isBenchmark ? 5   : 2000;
-        int numTraders  = isBenchmark ? 200 : 8;
+        boolean isSlow      = (!isBenchmark && !isConsole);
 
+        int traderDelay = isSlow ? 2000 : 5;
+        int numTraders  = isSlow ? 8    : 200;
+
+        String modeName = isConsole ? "CONSOLE" : (isBenchmark ? "BENCHMARK" : "SIMULATION");
         System.out.println("=== StockEngine: High-Frequency Trading Simulation ===");
-        System.out.printf("Mode: %s (%d traders, ~%dms between orders)%n%n",
-                isBenchmark ? "BENCHMARK" : "SIMULATION", numTraders, traderDelay);
+        System.out.printf("Mode: %s (%d traders, ~%dms between orders)%n%n", modeName, numTraders, traderDelay);
 
         // --- 1. create the two shared queues ---
         // these connect the matching engine to the downstream consumers.
@@ -80,12 +86,34 @@ public class Main {
         PortfolioManager portfolioManager = new PortfolioManager(portfolioQueue);
         MarketBroadcaster marketBroadcaster = new MarketBroadcaster(broadcasterQueue);
 
-        // --- 4. launch the dashboard and hook everything together ---
-        TradingDashboard dashboard = new TradingDashboard(tickers);
-        dashboard.setExchange(exchange);
-        exchange.setDashboard(dashboard);
-        marketBroadcaster.setDashboard(dashboard);
-        SwingUtilities.invokeLater(() -> dashboard.setVisible(true));
+        // --- 4. launch the live dashboard (simulation mode only) ---
+        // benchmark runs headless and opens a replay dashboard at the end instead
+        TradingDashboard dashboard = null;
+        Thread statsUpdater = null;
+
+        if (isSlow) {
+            dashboard = new TradingDashboard(tickers);
+            dashboard.setExchange(exchange);
+            exchange.setDashboard(dashboard);
+            marketBroadcaster.setDashboard(dashboard);
+
+            TradingDashboard guiRef = dashboard; // need a final ref for the lambda
+            SwingUtilities.invokeLater(() -> guiRef.setVisible(true));
+
+            // background thread to keep the dashboard order counter updated
+            statsUpdater = new Thread(() -> {
+                try {
+                    while (!Thread.currentThread().isInterrupted()) {
+                        guiRef.updateOrderCount(exchange.getTotalOrdersSubmitted());
+                        Thread.sleep(200);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "StatsUpdater");
+            statsUpdater.setDaemon(true);
+            statsUpdater.start();
+        }
 
         // daemon threads so they don't prevent JVM shutdown
         Thread portfolioThread = new Thread(portfolioManager, "PortfolioManager");
@@ -104,23 +132,9 @@ public class Main {
             traderPool.submit(new TraderBot("Bot-" + i, exchange, tickers, traderDelay));
         }
 
-        // --- 6. background thread to keep the dashboard order counter updated ---
-        Thread statsUpdater = new Thread(() -> {
-            try {
-                while (!Thread.currentThread().isInterrupted()) {
-                    dashboard.updateOrderCount(exchange.getTotalOrdersSubmitted());
-                    Thread.sleep(200);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }, "StatsUpdater");
-        statsUpdater.setDaemon(true);
-        statsUpdater.start();
-
-        // --- 7. wait for all bots to finish their 100 orders each ---
+        // --- 6. wait for all bots to finish their 100 orders each ---
         traderPool.shutdown();
-        int timeout = isBenchmark ? 30 : 120;
+        int timeout = isSlow ? 120 : 30;
         if (traderPool.awaitTermination(timeout, TimeUnit.SECONDS)) {
             System.out.println("\nAll traders done!");
         } else {
@@ -128,22 +142,34 @@ public class Main {
             traderPool.shutdownNow();
         }
 
-        // --- 8. let the consumer threads drain whatever's left in the queues ---
+        // --- 7. let the consumer threads drain whatever's left in the queues ---
         Thread.sleep(1000);
 
-        dashboard.updateOrderCount(exchange.getTotalOrdersSubmitted());
-        dashboard.markFinished();
-        statsUpdater.interrupt();
+        if (dashboard != null) {
+            dashboard.updateOrderCount(exchange.getTotalOrdersSubmitted());
+            dashboard.markFinished();
+        }
+        if (statsUpdater != null) {
+            statsUpdater.interrupt();
+        }
 
-        // --- 9. clean shutdown of consumer threads ---
+        // --- 8. clean shutdown of consumer threads ---
         portfolioThread.interrupt();
         broadcasterThread.interrupt();
         portfolioThread.join();
         broadcasterThread.join();
 
-        // --- 10. print console summary ---
+        // --- 9. print console summary ---
         System.out.printf("%nTotal orders submitted: %,d%n", exchange.getTotalOrdersSubmitted());
         marketBroadcaster.printSummary();
         portfolioManager.printSummary();
+
+        // --- 10. if benchmark mode, open replay dashboard so you can scrub through history ---
+        if (isBenchmark) {
+            System.out.println("\nOpening replay dashboard...");
+            java.util.List<Transaction> log = marketBroadcaster.getTransactionLog();
+            ReplayDashboard replay = new ReplayDashboard(tickers, log);
+            SwingUtilities.invokeLater(() -> replay.setVisible(true));
+        }
     }
 }

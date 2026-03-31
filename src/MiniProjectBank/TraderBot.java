@@ -29,10 +29,11 @@ public class TraderBot implements Runnable {
                 // 20% chance of a market order (no price limit — just fill it now)
                 boolean isMarket = random.nextInt(5) == 0;
 
-                // market buys use MAX price so they always cross, market sells use 0
+                // market buys use a high price so they always cross, market sells use 0
+                // (capped at $200 so we don't blow up portfolios with insane numbers)
                 long price;
                 if (isMarket) {
-                    price = isBuy ? Long.MAX_VALUE : 0;
+                    price = isBuy ? 20000 : 0;
                 } else {
                     // limit orders hover around $95-$105 range (in cents)
                     price = 9500 + random.nextInt(1001);

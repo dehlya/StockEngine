@@ -51,6 +51,16 @@ public class PriceChartPanel extends JPanel {
         return selectedTicker;
     }
 
+    /** wipes all price history — used by replay mode when scrubbing the slider */
+    public void clearAll() {
+        priceHistory.values().forEach(list -> {
+            synchronized (list) {
+                list.clear();
+            }
+        });
+        repaint();
+    }
+
     /** called on every trade — adds a price point to the history */
     public void addPrice(String ticker, long priceInCents) {
         List<Long> history = priceHistory.get(ticker);

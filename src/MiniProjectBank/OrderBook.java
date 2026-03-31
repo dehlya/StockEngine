@@ -18,7 +18,7 @@ import java.util.concurrent.BlockingQueue;
  * since each has its own OrderBook — that's where the concurrency wins come from.
  *
  * Supports both Limit orders (specific price) and Market orders (match at any available price).
- * Market buys use Long.MAX_VALUE so they always cross, market sells use 0. If two market
+ * Market buys use a high cap price ($200) so they always cross, market sells use 0. If two market
  * orders meet each other (rare but possible), we fall back to the last traded price.
  */
 public class OrderBook {
@@ -105,18 +105,18 @@ public class OrderBook {
                 matchPrice = bestBidOrder.timestamp < bestAskOrder.timestamp ? bestBidOrder.price : bestAskOrder.price;
             }
 
-            long matchQuantity = Math.min(bestBidOrder.quantity, bestAskOrder.quantity);
+            long matchQuantity = Math.min(bestBidOrder.getQuantity(), bestAskOrder.getQuantity());
 
             executeTrade(bestBidOrder, bestAskOrder, matchPrice, matchQuantity);
 
             // if there's leftover quantity, put the remainder back
-            bestBidOrder.quantity -= matchQuantity;
-            bestAskOrder.quantity -= matchQuantity;
+            bestBidOrder.reduceQuantity(matchQuantity);
+            bestAskOrder.reduceQuantity(matchQuantity);
 
-            if (bestBidOrder.quantity > 0) {
+            if (bestBidOrder.getQuantity() > 0) {
                 bids.add(bestBidOrder);
             }
-            if (bestAskOrder.quantity > 0) {
+            if (bestAskOrder.getQuantity() > 0) {
                 asks.add(bestAskOrder);
             }
         }

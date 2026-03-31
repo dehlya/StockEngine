@@ -2,19 +2,20 @@ package MiniProjectBank;
 
 import MiniProjectBank.ui.TradingDashboard;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * The "Ticker Plant" — dedicated thread that consumes executed transactions and keeps
  * a running record of everything that happened on the exchange.
  *
  * Tracks three things:
- *  1. Transaction log — append-only list of every trade (CopyOnWriteArrayList so
- *     the dashboard can iterate over it safely without us holding a lock)
+ *  1. Transaction log — append-only list of every trade (Collections.synchronizedList
+ *     so adds are cheap even at 20k+ trades — way better than CopyOnWriteArrayList)
  *  2. Last traded price per ticker — the "price feed"
  *  3. Volume per ticker — total shares traded
  *
@@ -22,13 +23,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * so the GUI can update the charts and feed. If not (headless mode), it just logs
  * to the internal structures and prints a summary at the end.
  *
- * Think of it as the scrolling ticker at the bottom of Bloomberg TV :)
+ * Think of it as those live stock price tickers you see when you google a company's stock :)
  */
 public class MarketBroadcaster implements Runnable {
     private final BlockingQueue<Transaction> transactionQueue;
 
-    // append-only — never deleted, only added to. thread-safe for concurrent reads.
-    private final List<Transaction> transactionLog = new CopyOnWriteArrayList<>();
+    // append-only — never deleted, only added to.
+    // synchronizedList wraps an ArrayList so we don't copy the whole array on every add()
+    // (CopyOnWriteArrayList was killing performance at 20k+ trades)
+    private final List<Transaction> transactionLog = Collections.synchronizedList(new ArrayList<>());
 
     // last executed price per ticker
     private final ConcurrentHashMap<String, Long> lastTradedPrice = new ConcurrentHashMap<>();
@@ -67,6 +70,11 @@ public class MarketBroadcaster implements Runnable {
             System.out.println("Market Broadcaster shutting down.");
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** returns the full transaction log — used by replay mode to scrub through history */
+    public List<Transaction> getTransactionLog() {
+        return transactionLog;
     }
 
     /** end-of-day market report — shows final prices, volumes, and last few trades */
