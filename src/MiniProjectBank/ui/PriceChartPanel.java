@@ -7,11 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Custom painted line chart for price history — no external libraries needed :)
- * Stores the last N prices per ticker and draws a smooth line chart with a gradient fill.
- * Click a ticker card to switch which chart is displayed.
- */
+// custom line chart — stores last N prices per ticker, draws with Graphics2D
 public class PriceChartPanel extends JPanel {
 
     private static final Color BG = new Color(22, 27, 38);

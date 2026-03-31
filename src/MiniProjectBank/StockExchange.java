@@ -6,17 +6,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * The central exchange — basically the router that sits between the traders and the order books.
- *
- * Each ticker (AAPL, TSLA, etc.) gets its own OrderBook instance stored in a ConcurrentHashMap.
- * When a trader submits an order, we just look up the right book and hand it off. Simple :)
- *
- * The ConcurrentHashMap means multiple tickers can be looked up simultaneously without blocking,
- * and since each OrderBook handles its own synchronization, we get nice per-ticker parallelism.
- *
- * Also tracks total order count with an AtomicLong so the dashboard can show it in real time.
- */
+// routes orders to the right OrderBook by ticker — ConcurrentHashMap for lock-free lookups
 public class StockExchange {
     private final ConcurrentHashMap<String, OrderBook> orderBooks = new ConcurrentHashMap<>();
     private final BlockingQueue<Transaction> portfolioQueue;

@@ -9,22 +9,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * The "Ticker Plant" — dedicated thread that consumes executed transactions and keeps
- * a running record of everything that happened on the exchange.
- *
- * Tracks three things:
- *  1. Transaction log — append-only list of every trade (Collections.synchronizedList
- *     so adds are cheap even at 20k+ trades — way better than CopyOnWriteArrayList)
- *  2. Last traded price per ticker — the "price feed"
- *  3. Volume per ticker — total shares traded
- *
- * If a TradingDashboard is connected, every trade gets pushed to it in real time
- * so the GUI can update the charts and feed. If not (headless mode), it just logs
- * to the internal structures and prints a summary at the end.
- *
- * Think of it as those live stock price tickers you see when you google a company's stock :)
- */
+// logs every trade, tracks last price + volume per ticker, pushes updates to the dashboard
 public class MarketBroadcaster implements Runnable {
     private final BlockingQueue<Transaction> transactionQueue;
 

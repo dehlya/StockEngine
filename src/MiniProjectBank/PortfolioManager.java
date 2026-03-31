@@ -4,20 +4,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Runs on its own thread, consuming transactions from a BlockingQueue and updating
- * every trader's cash balance and stock positions accordingly.
- *
- * Everyone starts with $100,000 in cash. Buyer pays (cash goes down), seller receives
- * (cash goes up). Stock holdings get adjusted too — buyer gains shares, seller loses them.
- *
- * Uses ConcurrentHashMap for both cash and positions because the dashboard might read
- * them from the EDT while we're writing from this thread. merge() and computeIfAbsent()
- * handle the atomicity for us so we don't need extra locks :)
- *
- * At the end of the simulation, printSummary() dumps everyone's P&L to the console.
- * Always fun to see who got lucky and who got wrecked lol
- */
+// consumes transactions from the queue and updates each trader's cash + stock positions
 public class PortfolioManager implements Runnable {
     private final BlockingQueue<Transaction> transactionQueue;
 

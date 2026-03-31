@@ -11,13 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Post-run replay dashboard — lets you scrub through the entire simulation history.
- * Drag the slider to any point in time and see what the market looked like then.
- * Cards, chart, and feed all update based on slider position.
- *
- * This is for benchmark mode where things go too fast to watch live :)
- */
+// replay mode — scrub through trade history with a slider, rebuilds state at each position
 public class ReplayDashboard extends JFrame {
 
     // same palette as TradingDashboard so it looks consistent

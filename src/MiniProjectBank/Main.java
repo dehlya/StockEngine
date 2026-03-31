@@ -10,34 +10,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Entry point for the StockEngine simulation.
- *
- * Architecture overview — everything is connected via BlockingQueues:
- *
- *   TraderBots (thread pool)
- *       |
- *       v
- *   StockExchange (ConcurrentHashMap of OrderBooks)
- *       |
- *       | processOrder() is synchronized per ticker — different tickers run in parallel
- *       |
- *       v
- *   OrderBook (PriorityQueue heaps for bids/asks, matching engine logic)
- *       |
- *       | matched trades get pushed to two BlockingQueues
- *       |
- *       +-----> PortfolioManager thread (updates cash + equity for each trader)
- *       +-----> MarketBroadcaster thread (logs trades, updates price feed, pushes to GUI)
- *                    |
- *                    v
- *              TradingDashboard (Swing GUI with charts and live feed) — optional
- *
- * Three modes:
- *  - Simulation: 8 bots, ~2s delay — slow enough to follow individual orders (with GUI)
- *  - Benchmark: 200 bots, ~5ms delay — stress test, thousands of orders per second (with GUI)
- *  - Console: same as benchmark but no GUI — pure terminal output
- */
+// entry point — sets up the exchange, spawns bots, wires everything together
 public class Main {
     public static void main(String[] args) throws InterruptedException {
 

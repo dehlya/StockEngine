@@ -13,11 +13,7 @@ import java.awt.event.MouseEvent;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Clean fintech-style dashboard with live price charts :)
- * Ticker cards on top, click one to see its chart below.
- * Trade feed on the right. Stats in the top bar.
- */
+// live dashboard — ticker cards, price chart, trade feed, all updated via invokeLater()
 public class TradingDashboard extends JFrame {
 
     // color palette

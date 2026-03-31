@@ -6,21 +6,7 @@ import java.util.Comparator;
 import java.util.PriorityQueue;
 import java.util.concurrent.BlockingQueue;
 
-/**
- * The heart of the matching engine — one OrderBook per ticker.
- *
- * Each book holds two heaps: bids (buys, highest first) and asks (sells, lowest first).
- * When a new order comes in we try to match it against the opposite side. If the best bid
- * price >= best ask price, we have a deal and execute the trade :)
- *
- * Thread safety: processOrder() is synchronized so two threads can't mess with the same
- * ticker's book at the same time. But different tickers can be processed in parallel
- * since each has its own OrderBook — that's where the concurrency wins come from.
- *
- * Supports both Limit orders (specific price) and Market orders (match at any available price).
- * Market buys use a high cap price ($200) so they always cross, market sells use 0. If two market
- * orders meet each other (rare but possible), we fall back to the last traded price.
- */
+// matching engine — one per ticker, synchronized so two threads don't mess with the same book
 public class OrderBook {
     public final String ticker;
 
