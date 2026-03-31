@@ -7,16 +7,22 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * The central exchange — routes incoming orders to the right OrderBook.
- * Each ticker gets its own book so they can process in parallel :)
+ * The central exchange — basically the router that sits between the traders and the order books.
+ *
+ * Each ticker (AAPL, TSLA, etc.) gets its own OrderBook instance stored in a ConcurrentHashMap.
+ * When a trader submits an order, we just look up the right book and hand it off. Simple :)
+ *
+ * The ConcurrentHashMap means multiple tickers can be looked up simultaneously without blocking,
+ * and since each OrderBook handles its own synchronization, we get nice per-ticker parallelism.
+ *
+ * Also tracks total order count with an AtomicLong so the dashboard can show it in real time.
  */
 public class StockExchange {
-    // Maps the ticker symbol to its specific OrderBook
     private final ConcurrentHashMap<String, OrderBook> orderBooks = new ConcurrentHashMap<>();
     private final BlockingQueue<Transaction> portfolioQueue;
     private final BlockingQueue<Transaction> broadcasterQueue;
 
-    // keeps track of how many orders came through total
+    // AtomicLong because multiple trader threads increment this concurrently
     private final AtomicLong totalOrdersSubmitted = new AtomicLong(0);
 
     public StockExchange(BlockingQueue<Transaction> portfolioQueue, BlockingQueue<Transaction> broadcasterQueue) {
@@ -31,21 +37,20 @@ public class StockExchange {
     public void submitOrder(Order order) {
         OrderBook book = orderBooks.get(order.ticker);
         if (book != null) {
-            // Hand off to the thread-safe OrderBook
             book.processOrder(order);
             totalOrdersSubmitted.incrementAndGet();
         } else {
-            // this shouldn't really happen unless someone typos a ticker lol
+            // shouldn't happen unless someone typos a ticker lol
             System.err.println("Rejected: Unknown ticker " + order.ticker);
         }
     }
 
-    /** lets each OrderBook push order submissions to the dashboard feed */
+    /** hooks up the dashboard to every OrderBook so they can push order events to the feed */
     public void setDashboard(TradingDashboard dashboard) {
         orderBooks.values().forEach(book -> book.setDashboard(dashboard));
     }
 
-    /** returns [bestBid, bestAsk] for a ticker — for the price feed */
+    /** returns [bestBid, bestAsk] for a given ticker — used by the price feed on the dashboard */
     public long[] getBidAsk(String ticker) {
         OrderBook book = orderBooks.get(ticker);
         if (book == null) return new long[]{0, 0};

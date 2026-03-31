@@ -9,23 +9,34 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * The ticker plant — logs every trade and tracks the latest price per ticker.
- * Think of it as the scrolling thing at the bottom of Bloomberg TV :)
- * Also pushes updates to the dashboard if one is connected.
+ * The "Ticker Plant" — dedicated thread that consumes executed transactions and keeps
+ * a running record of everything that happened on the exchange.
+ *
+ * Tracks three things:
+ *  1. Transaction log — append-only list of every trade (CopyOnWriteArrayList so
+ *     the dashboard can iterate over it safely without us holding a lock)
+ *  2. Last traded price per ticker — the "price feed"
+ *  3. Volume per ticker — total shares traded
+ *
+ * If a TradingDashboard is connected, every trade gets pushed to it in real time
+ * so the GUI can update the charts and feed. If not (headless mode), it just logs
+ * to the internal structures and prints a summary at the end.
+ *
+ * Think of it as the scrolling ticker at the bottom of Bloomberg TV :)
  */
 public class MarketBroadcaster implements Runnable {
     private final BlockingQueue<Transaction> transactionQueue;
 
-    // Append-only structure for the transaction history.
+    // append-only — never deleted, only added to. thread-safe for concurrent reads.
     private final List<Transaction> transactionLog = new CopyOnWriteArrayList<>();
 
-    // Tracks the last traded price for the Price Feed
+    // last executed price per ticker
     private final ConcurrentHashMap<String, Long> lastTradedPrice = new ConcurrentHashMap<>();
 
-    // Total volume traded per ticker
+    // cumulative volume per ticker
     private final ConcurrentHashMap<String, Long> volumeByTicker = new ConcurrentHashMap<>();
 
-    // optional GUI dashboard — null if running in console mode
+    // optional GUI hook — null if we're running without a dashboard
     private TradingDashboard dashboard;
 
     public MarketBroadcaster(BlockingQueue<Transaction> queue) {
@@ -40,6 +51,7 @@ public class MarketBroadcaster implements Runnable {
     public void run() {
         try {
             while (!Thread.currentThread().isInterrupted()) {
+                // blocks until a transaction arrives from the matching engine
                 Transaction tx = transactionQueue.take();
 
                 transactionLog.add(tx);
@@ -57,7 +69,7 @@ public class MarketBroadcaster implements Runnable {
         }
     }
 
-    // end-of-day market report :)
+    /** end-of-day market report — shows final prices, volumes, and last few trades */
     public void printSummary() {
         System.out.println("\n========== MARKET SUMMARY ==========");
         System.out.printf("Total trades: %d%n%n", transactionLog.size());
@@ -73,7 +85,7 @@ public class MarketBroadcaster implements Runnable {
                     System.out.printf("  %-6s |     $%5.2f | %,8d shares%n", ticker, price / 100.0, volume);
                 });
 
-        // last 5 trades so we can see how things ended
+        // show the last 5 trades so we can see how things ended
         int logSize = transactionLog.size();
         int start = Math.max(0, logSize - 5);
         if (logSize > 0) {

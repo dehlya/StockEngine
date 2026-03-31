@@ -5,18 +5,28 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Keeps track of every trader's cash and stock positions after each trade.
- * Everyone starts with $100k — whether they end up richer or poorer is up to luck honestly :)
+ * Runs on its own thread, consuming transactions from a BlockingQueue and updating
+ * every trader's cash balance and stock positions accordingly.
+ *
+ * Everyone starts with $100,000 in cash. Buyer pays (cash goes down), seller receives
+ * (cash goes up). Stock holdings get adjusted too — buyer gains shares, seller loses them.
+ *
+ * Uses ConcurrentHashMap for both cash and positions because the dashboard might read
+ * them from the EDT while we're writing from this thread. merge() and computeIfAbsent()
+ * handle the atomicity for us so we don't need extra locks :)
+ *
+ * At the end of the simulation, printSummary() dumps everyone's P&L to the console.
+ * Always fun to see who got lucky and who got wrecked lol
  */
 public class PortfolioManager implements Runnable {
     private final BlockingQueue<Transaction> transactionQueue;
 
     private static final long STARTING_CASH = 10_000_000L; // $100k in cents
 
-    // Trader ID -> cash balance in cents
+    // trader -> cash balance (in cents)
     private final ConcurrentHashMap<String, Long> cashBalances = new ConcurrentHashMap<>();
 
-    // Trader ID -> (Ticker -> Quantity)
+    // trader -> (ticker -> quantity held)
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, Long>> equityPositions = new ConcurrentHashMap<>();
 
     private long transactionsProcessed = 0;
@@ -29,15 +39,17 @@ public class PortfolioManager implements Runnable {
     public void run() {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                // blocks until a transaction shows up
+                // blocks here until a transaction shows up in the queue
                 Transaction tx = transactionQueue.take();
                 long totalCost = tx.price * tx.quantity;
 
-                // buyer pays, seller receives
+                // update cash — merge() handles first-time initialization too.
+                // if the key doesn't exist yet, the default value (STARTING_CASH ± cost) is used.
+                // if it does exist, the lambda runs and adjusts the old value.
                 cashBalances.merge(tx.buyerId, STARTING_CASH - totalCost, (old, val) -> old - totalCost);
                 cashBalances.merge(tx.sellerId, STARTING_CASH + totalCost, (old, val) -> old + totalCost);
 
-                // update stock holdings
+                // update stock holdings — computeIfAbsent creates the inner map on first access
                 equityPositions.computeIfAbsent(tx.buyerId, k -> new ConcurrentHashMap<>())
                         .merge(tx.ticker, tx.quantity, Long::sum);
                 equityPositions.computeIfAbsent(tx.sellerId, k -> new ConcurrentHashMap<>())
@@ -51,7 +63,7 @@ public class PortfolioManager implements Runnable {
         }
     }
 
-    // prints everyone's final portfolio — the moment of truth :)
+    /** prints everyone's final portfolio — the moment of truth :) */
     public void printSummary() {
         System.out.println("\n========== PORTFOLIO SUMMARY ==========");
         System.out.printf("Transactions processed: %d%n%n", transactionsProcessed);
@@ -67,7 +79,7 @@ public class PortfolioManager implements Runnable {
 
                     System.out.printf("  %-12s | Cash: $%,.2f (%s$%.2f)", traderId, cashDollars, pnlSign, pnl);
 
-                    // show what stocks they're holding (skip zeros — nobody cares about those)
+                    // show stock holdings, skip zeros since they're just noise
                     ConcurrentHashMap<String, Long> positions = equityPositions.get(traderId);
                     if (positions != null) {
                         StringBuilder sb = new StringBuilder();
